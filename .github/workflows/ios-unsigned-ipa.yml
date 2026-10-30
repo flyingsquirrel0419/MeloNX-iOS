@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - main
+      - native-mode
     paths:
       - ".github/workflows/ios-unsigned-ipa.yml"
       - "Directory.Packages.props"
@@ -41,6 +42,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: true   # src/nxnative: native mode's tables and host
 
       - name: Select Xcode
         run: |
@@ -92,10 +95,21 @@ jobs:
       - name: Check touch regressions
         run: dotnet run --project tests/MeloNX.Touch.Tests -c Release
 
+      # Native mode: Capstone and cs_shim for the on-device rewriter, and the tables the app bundles (generated from the nxnative submodule)
+      - name: Build native mode libraries and tables
+        run: |
+          set -euo pipefail
+          tools/native/build_ios_native.sh "$RUNNER_TEMP/native-prep"
+          tools/native/gen_app_tables.sh src/MeloNX/MeloNX/Native/Generated "$RUNNER_TEMP/native-host"
+          test -f src/MeloNX/MeloNX/Native/Generated/patch_tables.json
+          test -f src/MeloNX/MeloNX/Native/Generated/native_profiles.json
+
       - name: Publish Ryujinx.Library
         run: |
           set -euo pipefail
-          dotnet publish -c Release -r ios-arm64 -p:ExtraDefineConstants=DISABLE_UPDATER src/Ryujinx.Library --self-contained true
+          dotnet publish -c Release -r ios-arm64 -p:ExtraDefineConstants=DISABLE_UPDATER -p:NativePrepLibDir="$RUNNER_TEMP/native-prep" src/Ryujinx.Library --self-contained true
+          # DirectPInvoke links cs_shim at publish time: a missing Capstone symbol fails the link, not the app
+          nm -gU src/Ryujinx.Library/bin/Release/net10.0/ios-arm64/native/Ryujinx.Library.dylib | grep -q '_native_prepare$'
           test -f src/Ryujinx.Library/bin/Release/net10.0/ios-arm64/native/Ryujinx.Library.dylib
 
       - name: Resolve Swift packages
@@ -142,6 +156,7 @@ jobs:
           app_path="$DERIVED_DATA_PATH/Build/Products/${XCODE_CONFIGURATION}-iphoneos/MeloNX.app"
           test -d "$app_path"
           test -f "$app_path/Frameworks/Ryujinx.Library.dylib"
+          test -f "$app_path/patch_tables.json" && test -f "$app_path/native_profiles.json"
           mkdir -p "$IPA_OUTPUT_DIR/Payload"
           app="$IPA_OUTPUT_DIR/Payload/MeloNX.app"
           ditto "$app_path" "$app"

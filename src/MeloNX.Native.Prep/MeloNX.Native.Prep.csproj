@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- On-device preparation of nxnative's native mode: the NSO rewriter (a C# port of nxnative's dm/tools/patch_nso.py), and later the shader steps.
+       Capstone is reached through Native/cs_shim.c, linked statically into the app on iOS and built as libcs_shim.so / .dylib for the tools and tests. -->
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>disable</Nullable>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- extraction (Extract/GameExtractor.cs): the same LibHac as Ryujinx.HLE, so the app's key set opens the game -->
+    <PackageReference Include="Ryujinx.LibHac" />
+  </ItemGroup>
+
+</Project>

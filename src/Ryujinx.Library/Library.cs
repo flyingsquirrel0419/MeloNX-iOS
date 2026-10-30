@@ -89,6 +89,8 @@ namespace Ryujinx.Library
         private static readonly Lock inputConfigurationLock = new();
         private static KeyboardConfigNative? _keyboardConfig = null;
 
+        internal static VirtualFileSystem VirtualFileSystem => _virtualFileSystem;   // NativeMode's extraction opens games with the same keys
+
         [UnmanagedCallersOnly(EntryPoint = "main_ryujinx_sdl")]
         public static unsafe int MainExternal(OptionsNative* nativeOptions)
         {

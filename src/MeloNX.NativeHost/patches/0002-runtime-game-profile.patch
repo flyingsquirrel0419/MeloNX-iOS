@@ -1,0 +1,52 @@
+diff --git a/dm/gfx/nvn/nvn_mtl.m b/dm/gfx/nvn/nvn_mtl.m
+index bfec867..0d1376f 100644
+--- a/dm/gfx/nvn/nvn_mtl.m
++++ b/dm/gfx/nvn/nvn_mtl.m
+@@ -3620,7 +3620,7 @@ static NSString *exe_rel(const char *rel) {
+ static void shmap_load(void) {
+     if (g_shmap) return;
+     const char *e = getenv("DM_NVN_SHMAP");
+-    NSString *path = e ? @(e) : exe_rel("../games/" DM_GAME_ID "/shader_map.tsv");   // default: the current game profile folder (Mac: dm/games/<id>; on iOS main.m sets DM_NVN_SHMAP)
++    NSString *path = e ? @(e) : [NSString stringWithFormat:@"%@/../games/%s/shader_map.tsv", exe_rel("."), DM_GAME_ID];   // default: the current game profile folder (Mac: dm/games/<id>; on iOS main.m sets DM_NVN_SHMAP)
+     NSString *txt = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+     if (!txt) MDIE("cannot read the shader map %s (DM_NVN_SHMAP can name another)", path.UTF8String);
+     g_shmap = [NSMutableDictionary dictionary];
+@@ -3642,7 +3642,7 @@ static void shmap_load(void) {
+         if (c.count == 2 && [c[0] isEqual:@"game"]) st_game = c[1]; else if (c.count == 2 && [c[0] isEqual:@"inputs"]) st_inputs = c[1];
+     }
+     if (!st_inputs) MLOG("[RED] shader library %s has no stamp (inputs.tsv): no full dmsh_build.py run made it as it is, so c1_full.tsv and cb_extent.tsv are not taken", g_msl_dir.UTF8String);
+-    else if (st_game && ![st_game isEqual:@DM_GAME_ID]) MLOG("[RED] shader library %s was built for game %s, not " DM_GAME_ID, g_msl_dir.UTF8String, st_game.UTF8String);
++    else if (st_game && ![st_game isEqual:@(DM_GAME_ID)]) MLOG("[RED] shader library %s was built for game %s, not %s", g_msl_dir.UTF8String, st_game.UTF8String, DM_GAME_ID);
+     else MLOG("shader library stamp: game %s, inputs %s", st_game.UTF8String, st_inputs.UTF8String);
+     NSString *cp = [[path stringByDeletingLastPathComponent] stringByAppendingPathComponent:@"c1_full.tsv"];   // Same directory as the mapping table (Mac: dm/games/<id>; iOS: dm/ inside the App, copied along by build_ipa.sh)
+     NSString *ct = cp ? [NSString stringWithContentsOfFile:cp encoding:NSUTF8StringEncoding error:nil] : nil;
+diff --git a/dm/host/hle_sdk16.c b/dm/host/hle_sdk16.c
+index 4119648..9cfaf59 100644
+--- a/dm/host/hle_sdk16.c
++++ b/dm/host/hle_sdk16.c
+@@ -14,10 +14,10 @@
+ HLE_FORCE("_ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE", "CPU boost mode; the host does not scale clocks", void, h_oe_CpuBoost, int m) { (void)m; }
+ // DisplayVersion = char[16] (the application's display version): the value from that version's control data (NACP), chosen by main's build ID (the game profile's build rows); unknown builds get 1.0.0
+ HLE_FORCE("_ZN2nn2oe17GetDisplayVersionEPNS0_14DisplayVersionE", "display version (by the main build ID)", void, h_oe_DispVer, char *v) {
+-    static const struct { const char *build, *ver; } k[] = {DM_GAME_DISPLAY_VERSIONS};
++    const dm_display_version *k = DM_GAME_DISPLAY_VERSION_LIST;   // MeloNX: the profile chosen at run time (gen_profiles.py)
+     const char *ver = "1.0.0";
+     for (int i = 0; i < g_nmod; i++) if (!strcmp(g_mod[i].name, "main"))
+-        for (unsigned j = 0; j < sizeof k / sizeof *k; j++) if (!strcmp(g_mod[i].build_id, k[j].build)) ver = k[j].ver;
++        for (int j = 0; j < DM_GAME_NDISPLAY_VERSIONS; j++) if (!strcmp(g_mod[i].build_id, k[j].build)) ver = k[j].ver;
+     memset(v, 0, 16); strlcpy(v, ver, 16);
+ }
+ HLE_FORCE("_ZN2nn2oe24GetExpectedVolumeBalanceEPfS1_", "system / application volume balance; the host always reports 1:1", void, h_oe_GetVolBal, float *sys, float *app) { *sys = 1.0f; *app = 1.0f; }
+diff --git a/dm/host/main.c b/dm/host/main.c
+index 6ba8c63..b7b0208 100644
+--- a/dm/host/main.c
++++ b/dm/host/main.c
+@@ -100,7 +100,7 @@ static void host_preload(int argc, char **argv) {
+         for (char *t = strtok(s, " "); t && g_argc < 63; t = strtok(NULL, " ")) g_argv[g_argc++] = t;
+         LOG("game arguments from the game profile: %s", DM_GAME_ARGS);
+     }
+-    if (!n) { static const char *def[] = DM_GAME_MODULES; for (int k = 0; k < DM_GAME_NMOD; k++) names[n++] = def[k]; }   // default module list from the game profile's modules (Mario: main sdk)
++    if (!n) { const char *const *def = DM_GAME_MODULE_LIST; for (int k = 0; k < DM_GAME_NMOD; k++) names[n++] = def[k]; }   // default module list from the game profile's modules (Mario: main sdk; MeloNX: the profile chosen at run time)
+     load_modules(argv[1], names, n);
+     dm_sdk_major();   // logs the SDK version, which SDK-dependent behaviour follows (loader.c)
+     uint64_t ta = now_ns();

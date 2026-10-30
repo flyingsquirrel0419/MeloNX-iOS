@@ -180,6 +180,14 @@ extension GamesListView {
                 } label: {
                     Label("Mod Manager", systemImage: "folder.circle")
                 }
+
+                if NativePrep.profile(for: game.titleId) != nil {
+                    Button {
+                        activeSheet = .nativePrep(game: game)
+                    } label: {
+                        Label("Native Mode", systemImage: "bolt.circle")
+                    }
+                }
                 
                 Menu {
                     ForEach(SaveDataType.allCases) { type in
@@ -282,10 +290,16 @@ extension GamesListView {
             }
         )
         
+        let nativeActions: [UIMenuElement] = NativePrep.profile(for: game.titleId) == nil ? [] : [
+            UIAction(title: "Native Mode", image: UIImage(systemName: "bolt.circle")) { _ in
+                activeSheet = .nativePrep(game: game)
+            }
+        ]
+
         let managersSection = UIMenu(
             title: "",
             options: .displayInline,
-            children: [updateAction, dlcAction, modsAction, saveDirectoryMenu]
+            children: [updateAction, dlcAction, modsAction] + nativeActions + [saveDirectoryMenu]
         )
         
         let clearShaderCacheAction = UIAction(

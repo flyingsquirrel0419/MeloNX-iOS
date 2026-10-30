@@ -1,0 +1,86 @@
+diff --git a/dm/host/loader.c b/dm/host/loader.c
+index 2b84e4f..42de226 100644
+--- a/dm/host/loader.c
++++ b/dm/host/loader.c
+@@ -510,7 +510,7 @@ void loader_hash_log(void) {
+     }
+ }
+ 
+-#if TARGET_OS_IPHONE
++#if TARGET_OS_IPHONE && !DM_JIT_LOADER
+ // iOS does not allow code loaded at run time to execute, and Apple allows an executable only one segment with execute permission (ITMS-90999): the image is compiled into this executable by dm/ios/tools/gen_embed.py --
+ // the two code blocks (original text, patch area) are sections in __TEXT, and W (the rest of ro + data + bss) is a separate RW segment. The three blocks are not adjacent in the file; here one contiguous address range is reserved,
+ // and they are vm_remap'ed back at their original relative positions: code pages with copy=FALSE (sharing the same signed pages with __TEXT, r-x), W with copy=TRUE (copy-on-write, paged only when used).
+@@ -580,6 +580,64 @@ static uint8_t *slurp(const char *path, size_t *n) {
+     close(fd); *n = st.st_size; return p;
+ }
+ 
++#if DM_JIT_LOADER
++// MeloNX native mode (DM_JIT_LOADER): the modules are files the app rewrote on the device, and their code runs from a JIT region, as MeloNX's own JIT code does
++// (on iOS 26+ with TXM a mapping the debugger grants, with a writable view of the same pages). dm_jit_alloc, which the app provides, gives size bytes of executable
++// memory and that writable view. The whole module (patch area, gap, image) is one such region, filled through the view; then every range that is not code is
++// replaced by ordinary pages: read-write for ro, data, bss and the key page, inaccessible for the gap. Code and data keep their relative positions (adrp reaches
++// across them), and the code is never writable at its own address, as with mprotect on the Mac
++#include <libkern/OSCacheControl.h>
++void *dm_jit_alloc(size_t size, void **rw);
++
++typedef struct { uint64_t off, len; int prot; } jit_range;   // prot: PROT_EXEC = stays code, else the protection of the ordinary pages that replace it
++
++static void jit_map(module_t *m, uint8_t **region, uint64_t total, const jit_range *r, int nr, const uint8_t *src[], const uint64_t dst[], const uint64_t len[], int ns) {
++    void *rw = NULL;
++    uint8_t *rx = dm_jit_alloc(total, &rw);
++    if (!rx || !rw || ((uintptr_t)rx & 0x3FFF)) die("%s: no JIT region of %#llx bytes (is JIT enabled?)", m->name, (unsigned long long)total);
++    for (int i = 0; i < ns; i++) memcpy((uint8_t *)rw + dst[i], src[i], len[i]);
++    for (int i = 0; i < nr; i++) {
++        if (!r[i].len) continue;
++        if (r[i].prot == PROT_EXEC) { sys_icache_invalidate(rx + r[i].off, r[i].len); continue; }
++        // The writable view still shows the bytes after the executable pages at this address are replaced: copy them over from there
++        void *p = mmap(rx + r[i].off, r[i].len, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0);
++        if (p != rx + r[i].off) die("%s: cannot replace %#llx..%#llx of the JIT region with read-write pages", m->name, (unsigned long long)r[i].off, (unsigned long long)(r[i].off + r[i].len));
++        if (r[i].prot == PROT_NONE) { if (mprotect(p, r[i].len, PROT_NONE)) die("%s gap mprotect", m->name); }
++        else memcpy(p, (uint8_t *)rw + r[i].off, r[i].len);
++    }
++    munmap(rw, total);   // from here on the code has no writable address
++    *region = rx;
++}
++
++static void map_image(module_t *m, const char *dir) {
++    char path[1024]; snprintf(path, sizeof path, "%s/%s.patched.bin", dir, m->name);
++    size_t sz; uint8_t *raw = slurp(path, &sz);
++    uint8_t *a;
++    if (m->patch_off < 0) {
++        // Patch area before the base, laid out as the Mac path below lays it out
++        uint64_t pre = (uint64_t)-m->patch_off, fl = m->file_image_len, bl = m->back_len;
++        if (sz < fl + bl) die("%s is shorter than FILE_IMAGE_LEN %#llx + BACK_LEN %#llx", path, (unsigned long long)fl, (unsigned long long)bl);
++        m->size = m->image_size; m->patch_len = (sz - bl - fl + 0x3FFF) & ~0x3FFFull;
++        if (m->patch_len > pre) die("%s patch area of %#llx bytes does not fit in the %#llx before the base", path, (unsigned long long)m->patch_len, (unsigned long long)pre);
++        uint64_t rx = (m->text_end + 0x3FFF) & ~0x3FFFull, end = bl ? m->back_off : m->size;
++        jit_range r[] = { { 0, m->patch_len, PROT_EXEC }, { m->patch_len, pre - m->patch_len, PROT_NONE }, { pre, rx, PROT_EXEC },
++                          { pre + rx, end - rx, PROT_READ | PROT_WRITE }, { pre + m->back_off, bl, PROT_EXEC } };
++        const uint8_t *src[] = { raw + fl, raw, raw + sz - bl };
++        uint64_t dst[] = { 0, pre, pre + m->back_off }, len[] = { sz - bl - fl, fl, bl };
++        jit_map(m, &a, pre + m->size, r, 5, src, dst, len, 3);
++        m->base = a + pre;
++    } else {
++        m->size = (sz + 0x3FFF) & ~0x3FFFull;
++        uint64_t rx = (m->text_end + 0x3FFF) & ~0x3FFFull, po = m->patch_off & ~0x3FFFull;
++        jit_range r[] = { { 0, rx, PROT_EXEC }, { rx, po - rx, PROT_READ | PROT_WRITE }, { po, m->size - po, PROT_EXEC } };
++        const uint8_t *src[] = { raw }; uint64_t dst[] = { 0 }, len[] = { sz };
++        jit_map(m, &a, m->size, r, 3, src, dst, len, 1);
++        m->base = a;
++    }
++    free(raw); install_key_page(m);
++    LOG("%s: JIT region %p, %#zx bytes", m->name, m->base, m->size);
++}
++#else
+ // Seal the code area immediately after copying into anonymous pages (16 KB pages): [0, text_end) and the patch area are read-only+execute, and from then on any write to the code area crashes on the spot;
+ // what lies between (ro and data on the same page can only go together) is writable
+ static void map_image(module_t *m, const char *dir) {
+@@ -613,6 +671,7 @@ static void map_image(module_t *m, const char *dir) {
+     uint64_t po = m->patch_off & ~0x3FFFull;
+     if (mprotect(m->base + po, m->size - po, PROT_READ | PROT_EXEC)) die("%s mprotect patch", m->name);
+ }
++#endif   // DM_JIT_LOADER
+ #endif
+ 
+ void load_modules(const char *dir, const char **names, int n) {

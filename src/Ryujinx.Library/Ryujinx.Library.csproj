@@ -126,6 +126,14 @@
     <ProjectReference Include="..\Ryujinx.Audio.Backends.OpenAL\Ryujinx.Audio.Backends.OpenAL.csproj" />
     <ProjectReference Include="..\Ryujinx.Audio.Backends.Apple\Ryujinx.Audio.Backends.Apple.csproj" />
     <ProjectReference Include="..\Ryujinx.Input.Native\Ryujinx.Input.Native.csproj" />
+    <ProjectReference Include="..\MeloNX.Native.Prep\MeloNX.Native.Prep.csproj" />
+  </ItemGroup>
+
+  <!-- Native mode's rewriter (MeloNX.Native.Prep) disassembles with Capstone through cs_shim: linked statically into the app, from tools/native/build_ios_native.sh's output -->
+  <ItemGroup Condition=" '$(NativePrepLibDir)' != '' ">
+    <DirectPInvoke Include="cs_shim" />
+    <NativeLibrary Include="$(NativePrepLibDir)/libcs_shim.a" />
+    <NativeLibrary Include="$(NativePrepLibDir)/libcapstone.a" />
   </ItemGroup>
 
   <ItemGroup>

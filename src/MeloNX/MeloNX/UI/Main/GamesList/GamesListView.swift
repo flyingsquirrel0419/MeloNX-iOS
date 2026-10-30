@@ -17,6 +17,7 @@ enum ActiveSheet: Identifiable, Equatable{
     case dlc(game: GameInfo)
     case update(game: GameInfo)
     case mods(game: GameInfo)
+    case nativePrep(game: GameInfo)
     case account
 
     var id: String {
@@ -26,6 +27,7 @@ enum ActiveSheet: Identifiable, Equatable{
              // .gameController(let game),
              .dlc(let game),
              .mods(let game),
+             .nativePrep(let game),
              .update(let game):
             return "\(type(of: self))-\(game.id)"
         case .account:
@@ -185,6 +187,10 @@ struct GamesListView: View {
                 UpdateManagerSheet(game: game)
             case .mods(let game):
                 ModsManagerSheet(game: game)
+            case .nativePrep(let game):
+                if #available(iOS 16.0, *) {
+                    NativePrepSheet(game: game)
+                }
             case .account:
                 AccountManagerView()
             }
