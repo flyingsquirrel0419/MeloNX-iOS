@@ -15,9 +15,12 @@ MIN_IOS=15.0
 if [ ! -d "$work" ]; then
   git clone -q --depth 1 --branch "$CAPSTONE_TAG" https://github.com/capstone-engine/capstone.git "$work"
 fi
+# CMAKE_SYSTEM_PROCESSOR: Capstone's CPackConfig.txt compares it unquoted, and it is empty for iOS.
+# CAPSTONE_BUILD_MACOS_THIN: otherwise Capstone forces x86_64;arm64 on every Apple target.
 cmake -S "$work" -B "$work/build-ios" -G "Unix Makefiles" \
-  -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=$MIN_IOS -DCMAKE_BUILD_TYPE=Release \
-  -DCAPSTONE_BUILD_SHARED=OFF -DCAPSTONE_BUILD_STATIC=ON -DCAPSTONE_BUILD_TESTS=OFF -DCAPSTONE_BUILD_CSTOOL=OFF -DCAPSTONE_BUILD_DIET=OFF \
+  -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_SYSTEM_PROCESSOR=arm64 -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=$MIN_IOS -DCMAKE_BUILD_TYPE=Release \
+  -DCAPSTONE_BUILD_MACOS_THIN=ON -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DCAPSTONE_INSTALL=OFF \
+  -DCAPSTONE_BUILD_TESTS=OFF -DCAPSTONE_BUILD_CSTOOL=OFF -DCAPSTONE_BUILD_DIET=OFF \
   -DCAPSTONE_ARCHITECTURE_DEFAULT=OFF -DCAPSTONE_ARM64_SUPPORT=ON >/dev/null
 cmake --build "$work/build-ios" --config Release -j "$(sysctl -n hw.ncpu 2>/dev/null || echo 4)" >/dev/null
 cp "$work/build-ios/libcapstone.a" "$out/libcapstone.a"
