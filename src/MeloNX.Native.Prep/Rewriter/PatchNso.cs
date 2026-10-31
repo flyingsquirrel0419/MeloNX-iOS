@@ -16,6 +16,7 @@ namespace MeloNX.Native.Prep.Rewriter
         public string Profile = "";          // DM_GAME's base name: the profile whose MATCH_CUTS and build rows apply
         public long? PatchFront;             // DM_PATCH_FRONT, set only by the rewriter's own second pass
         public bool SpinList;                // DM_SPIN_LIST
+        public Action<double> Progress;      // the analysis's progress (0..1) on a big module, for the app's preparation sheet; no effect on the outputs
     }
 
     public sealed class RewriteResult
@@ -39,7 +40,7 @@ namespace MeloNX.Native.Prep.Rewriter
             try { return new PatchNso(mod, name, tables, options).Run(); }
             catch (RerunWithFront r)
             {
-                var again = new RewriteOptions { Profile = options.Profile, PatchFront = r.Need, SpinList = options.SpinList };
+                var again = new RewriteOptions { Profile = options.Profile, PatchFront = r.Need, SpinList = options.SpinList, Progress = options.Progress };
                 return new PatchNso(mod, name, tables, again).Run();   // the module's own image is never changed: each pass copies it
             }
         }

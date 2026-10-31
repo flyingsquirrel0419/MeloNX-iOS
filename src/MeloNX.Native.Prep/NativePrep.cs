@@ -35,6 +35,7 @@ namespace MeloNX.Native.Prep
     //   patched/<module>.*          the rewriter's outputs, the host's module directory (dmhost <dir>)
     //   control.nacp, icon.jpg
     //   native.json                 what was prepared, from what, by which rewriter (written last: its presence means the preparation finished)
+    //   prep.log                    the last preparation's log, written as it goes: what is left of it when the app was stopped (out of memory, say)
     // Not yet: the NROs a game loads from its RomFS (nro.tsv), add-on content, and the shader steps.
     public static class NativePrep
     {
@@ -48,13 +49,36 @@ namespace MeloNX.Native.Prep
             public string TablesPath, ProfilesPath;
             public Action<string> Log;
             public Action<string, double> Stage;  // stage name, fraction done (0..1) within it
+            public Func<long> FreeMemory;         // bytes the app may still allocate (iOS: os_proc_available_memory), logged before each module's rewrite; may be null
         }
 
         public static string Run(Request q)
         {
-            var log = q.Log ?? (_ => { });
+            var sink = q.Log ?? (_ => { });
             var stage = q.Stage ?? ((_, _) => { });
             var profiles = NativeProfiles.Load(q.ProfilesPath);
+            var early = new List<string>();
+            StreamWriter file = null;
+            void log(string line)
+            {
+                sink(line);
+                if (file == null) { early.Add(line); return; }
+                file.WriteLine(line);
+            }
+            try
+            {
+                return Run(q, profiles, log, stage, early, f => file = f);
+            }
+            catch (Exception e)
+            {
+                file?.WriteLine("[RED] " + e);   // into prep.log only: the caller reports the error itself
+                throw;
+            }
+            finally { file?.Dispose(); }
+        }
+
+        static string Run(Request q, List<NativeProfile> profiles, Action<string> log, Action<string, double> stage, List<string> early, Action<StreamWriter> openLog)
+        {
 
             stage("identify", 0);
             string title = GameExtractor.TitleOf(q.Keys, q.BasePath) ?? throw new ExtractError("the game file has no content meta: is it a game NSP or XCI?");
@@ -64,13 +88,16 @@ namespace MeloNX.Native.Prep
             string dir = Path.Combine(q.Root, profile.Id.ToUpperInvariant());
             Directory.CreateDirectory(dir);
             File.Delete(Path.Combine(dir, "native.json"));
+            var file = new StreamWriter(Path.Combine(dir, "prep.log"), append: false) { AutoFlush = true };
+            foreach (var line in early) file.WriteLine(line);
+            openLog(file);
             var watch = Stopwatch.StartNew();
 
             stage("extract", 0);
             var ex = GameExtractor.Run(q.Keys, q.BasePath, q.UpdatePath, dir, log, (done, total) => stage("extract", total > 0 ? (double)done / total : 1));
             log($"extracted in {watch.Elapsed.TotalSeconds:F1} s");
 
-            string version = RewriteModules(dir, profile, PatchTables.Load(q.TablesPath), ex.BuildIds, log, f => stage("rewrite", f));
+            string version = RewriteModules(dir, profile, PatchTables.Load(q.TablesPath), ex.BuildIds, log, f => stage("rewrite", f), q.FreeMemory);
 
             var info = new Dictionary<string, object>
             {
@@ -94,21 +121,27 @@ namespace MeloNX.Native.Prep
 
         // The rewriter on every module the profile lists, from <dir>/ExeFS into <dir>/patched (replaced whole, only once every module is rewritten).
         // Returns the registered display version of these modules' build, or null for a build the profile does not register
-        public static string RewriteModules(string dir, NativeProfile profile, PatchTables tables, Dictionary<string, string> buildIds, Action<string> log, Action<double> progress = null)
+        public static string RewriteModules(string dir, NativeProfile profile, PatchTables tables, Dictionary<string, string> buildIds, Action<string> log, Action<double> progress = null,
+                                            Func<long> freeMemory = null)
         {
             string version = RegisteredVersion(tables, profile.Id, buildIds);
             log(version != null ? $"registered build: version {version}" : "[RED] this build is not registered in the profile: the rewriter falls back on function matching, and the game may not boot");
             string patched = Path.Combine(dir, "patched"), tmp = patched + ".partial";
             if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
             Directory.CreateDirectory(tmp);
-            var options = new RewriteOptions { Profile = profile.Id };
-            for (int i = 0; i < profile.Modules.Length; i++)
+            int count = profile.Modules.Length;
+            for (int i = 0; i < count; i++)
             {
                 string m = profile.Modules[i], src = Path.Combine(dir, "ExeFS", m);
-                progress?.Invoke((double)i / profile.Modules.Length);
+                progress?.Invoke((double)i / count);
                 if (!File.Exists(src)) throw new ExtractError($"the game has no {m} module, which the profile lists");
                 var watch = Stopwatch.StartNew();
-                var result = PatchNso.Rewrite(Nso.Read(src), m, tables, options);
+                var mod = Nso.Read(src);
+                string free = freeMemory == null ? "" : $", {freeMemory() / 1048576} MB free";
+                log($"{m}: rewriting {mod.TextEnd / 1048576.0:F1} MB of code{free}");
+                int at = i;
+                var options = new RewriteOptions { Profile = profile.Id, Progress = progress == null ? null : f => progress((at + f) / count) };
+                var result = PatchNso.Rewrite(mod, m, tables, options);
                 File.WriteAllBytes(Path.Combine(tmp, m + ".patched.bin"), result.PatchedBin);
                 foreach (var (file, text) in result.Files) File.WriteAllText(Path.Combine(tmp, file), text);
                 File.WriteAllLines(Path.Combine(tmp, $"rewrite_{m}.log"), result.Log);

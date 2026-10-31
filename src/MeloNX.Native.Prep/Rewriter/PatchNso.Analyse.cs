@@ -62,7 +62,8 @@ namespace MeloNX.Native.Prep.Rewriter
                 Stat("acquire_lock");
             }
             x18 = new HashSet<long>();
-            foreach (var (s, e) in CODE_RANGES) x18.UnionWith(X18Words(s, e));
+            long scanned = 0, toScan = Math.Max(1, CODE_RANGES.Sum(r => r.E - r.S));
+            foreach (var (s, e) in CODE_RANGES) { x18.UnionWith(X18Words(s, e, scanned, toScan)); scanned += e - s; }
             var SPIN_TOPS = new HashSet<uint> { 0x16, 0x17, 0x54, 0x34, 0x35, 0xB4, 0xB5, 0x36, 0x37, 0xB6, 0xB7 };
             foreach (var (s, e) in CODE_RANGES)
             {
@@ -110,7 +111,12 @@ namespace MeloNX.Native.Prep.Rewriter
                 }
                 funcs = split;
             }
-            foreach (var (fa, fb) in funcs) AnalyseFunction(fa, fb, rmidAll);
+            for (int i = 0; i < funcs.Count; i++)
+            {
+                if ((i & 255) == 0) Opt.Progress?.Invoke(0.4 + 0.5 * i / funcs.Count);
+                AnalyseFunction(funcs[i].S, funcs[i].E, rmidAll);
+            }
+            Opt.Progress?.Invoke(0.9);
             if (farInto.Count > 0)
             {
                 var winMid = windows.SelectMany(w => w.Skip(1)).Select(x => x.Address).ToHashSet();
@@ -256,12 +262,13 @@ namespace MeloNX.Native.Prep.Rewriter
             return out_;
         }
 
-        private HashSet<long> X18Words(long lo, long hi)
+        private HashSet<long> X18Words(long lo, long hi, long before = 0, long total = 0)
         {
             var out_ = new HashSet<long>(); long a = lo;
             var r18 = Rx(@"\b[xw]18\b");
-            while (a < hi)
+            for (int chunk = 0; a < hi; chunk++)
             {
+                if (total > 0 && (chunk & 63) == 0) Opt.Progress?.Invoke(0.4 * (before + a - lo) / total);
                 long end = Math.Min(hi, a + 0x4000), last = a - 4;
                 foreach (var ins in mdLite.Disasm(IMG.AsSpan((int)a, (int)(end - a)), a))
                 {

@@ -52,6 +52,13 @@ final class NativePrep {
         return (info["prep_version"] as? Int) == prepVersion
     }
 
+    // prep.log: the last preparation's log, written as it went, so what happened is still there when iOS stopped the app during it
+    static func lastLog(_ titleId: String) -> [String] {
+        let url = directory(for: titleId).appendingPathComponent("prep.log")
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        return text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+    }
+
     private static let queue = DispatchQueue(label: "melonx.native.prep", qos: .userInitiated)
 
     // Prepares the game at gameURL (NSP or XCI; the update MeloNX has selected for it is applied). The handlers run on the main queue.

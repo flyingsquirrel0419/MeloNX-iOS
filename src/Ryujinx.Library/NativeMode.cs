@@ -21,6 +21,10 @@ namespace Ryujinx.Library
     {
         private const string Callback = "native_prep";
 
+        // what the app may still allocate before iOS stops it (iOS 13+)
+        [DllImport("/usr/lib/libSystem.dylib")]
+        private static extern nuint os_proc_available_memory();
+
         private static readonly TitleUpdateMetadataJsonSerializerContext _titleSerializerContext = new(JsonHelper.GetDefaultSerializerOptions());
 
         // Prepares the game at basePath (NSP or XCI) into <root>/<title ID>/. updatePath may be NULL: then the update MeloNX has selected for the game, if any.
@@ -48,6 +52,7 @@ namespace Ryujinx.Library
                     ProfilesPath = Marshal.PtrToStringUTF8(profilesPathPtr),
                     Log = Log,
                     Stage = (name, fraction) => Send($"stage\t{name}\t{fraction.ToString("F3", CultureInfo.InvariantCulture)}"),
+                    FreeMemory = OperatingSystem.IsIOS() ? () => (long)os_proc_available_memory() : null,
                 });
                 return 0;
             }

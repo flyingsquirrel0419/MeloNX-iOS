@@ -76,6 +76,13 @@ struct NativePrepSheet: View {
             }
         }
         .interactiveDismissDisabled(running)
+        .onAppear {
+            // a preparation that did not finish (the app was stopped during it) left its log behind
+            if !running && log.isEmpty && !NativePrep.isPrepared(game.titleId) {
+                let previous = NativePrep.lastLog(game.titleId)
+                if !previous.isEmpty { log = ["[RED] The last preparation did not finish. Its log:"] + previous }
+            }
+        }
     }
 
     private func stageTitle(_ stage: NativePrepStage) -> String {
