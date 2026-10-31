@@ -10,7 +10,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$out"; out=$(cd "$out" && pwd)
 work="$out/capstone-src"
 CAPSTONE_TAG=5.0.7
-MIN_IOS=15.0
+MIN_IOS=12.2   # what the NativeAOT publish of Ryujinx.Library links for
 
 if [ ! -d "$work" ]; then
   git clone -q --depth 1 --branch "$CAPSTONE_TAG" https://github.com/capstone-engine/capstone.git "$work"

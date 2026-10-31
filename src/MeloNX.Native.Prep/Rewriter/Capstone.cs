@@ -10,6 +10,18 @@ namespace MeloNX.Native.Prep.Rewriter
     {
         public const string Lib = "cs_shim";
 
+        // On iOS cs_shim is linked into the app's Ryujinx.Library.dylib (force-loaded and exported, Ryujinx.Library.csproj), never shipped as its own library:
+        // when ILC binds these imports at run time instead of directly, they are found among the loaded images (RTLD_DEFAULT) rather than by a dlopen of "cs_shim"
+        static CsNative()
+        {
+            if (OperatingSystem.IsIOS())
+            {
+                NativeLibrary.SetDllImportResolver(typeof(CsNative).Assembly, (name, _, _) => name == Lib ? RtldDefault : IntPtr.Zero);
+            }
+        }
+
+        private static readonly IntPtr RtldDefault = -2;   // dlfcn.h on Darwin: ((void *) -2)
+
         [StructLayout(LayoutKind.Sequential)]
         public struct ShimOp
         {

@@ -134,6 +134,9 @@
     <DirectPInvoke Include="cs_shim" />
     <NativeLibrary Include="$(NativePrepLibDir)/libcs_shim.a" />
     <NativeLibrary Include="$(NativePrepLibDir)/libcapstone.a" />
+    <!-- also loaded whole and exported, for when ILC binds the imports at run time (CsNative resolves them in the loaded images on iOS) -->
+    <LinkerArg Include="-Wl,-force_load,$(NativePrepLibDir)/libcs_shim.a" />
+    <LinkerArg Include="-Wl,-exported_symbol,_cs_shim_*" />
   </ItemGroup>
 
   <ItemGroup>
