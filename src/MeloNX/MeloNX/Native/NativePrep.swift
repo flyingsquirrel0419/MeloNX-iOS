@@ -59,6 +59,11 @@ final class NativePrep {
         return text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
     }
 
+    // log.txt: the host's log of the last launch (src/MeloNX.NativeHost/native_boot.m), what is left of it when the game crashed
+    static func launchLog(_ titleId: String) -> String? {
+        try? String(contentsOf: directory(for: titleId).appendingPathComponent("log.txt"), encoding: .utf8)
+    }
+
     private static let queue = DispatchQueue(label: "melonx.native.prep", qos: .userInitiated)
 
     // Prepares the game at gameURL (NSP or XCI; the update MeloNX has selected for it is applied). The handlers run on the main queue.

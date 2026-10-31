@@ -62,6 +62,21 @@ struct NativePrepSheet: View {
                     Text("Extracts the game's code and files with your keys and rewrites the code for native mode, into Documents/NativeGames. Keep the app open until it is done.")
                 }
 
+                if let launchLog = NativePrep.launchLog(game.titleId), !launchLog.isEmpty {
+                    Section {
+                        ShareLink(item: launchLog) {
+                            Label("Share the last launch's log", systemImage: "square.and.arrow.up")
+                        }
+                        ForEach(Array(launchLog.split(separator: "\n").suffix(40).enumerated()), id: \.offset) { _, line in
+                            Text(String(line))
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(line.contains("[RED]") || line.contains("CRASH") ? .red : .primary)
+                        }
+                    } header: {
+                        Text("Last launch (end of log.txt)")
+                    }
+                }
+
                 if !log.isEmpty {
                     Section("Log") {
                         ForEach(Array(log.enumerated()), id: \.offset) { _, line in
