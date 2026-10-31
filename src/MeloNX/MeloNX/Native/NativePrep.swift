@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import ObjectiveC
 
 struct NativeProfile: Decodable {
     let id: String
@@ -112,17 +113,23 @@ final class NativePrep {
 // Starting a prepared game: nxnative's host, linked into the app by CI (tools/native/build_ios_host.sh). Its entry is an Objective-C class found by name
 // (src/MeloNX.NativeHost/native_boot.m), so a build without the host still links
 enum NativeLaunch {
-    private static var launcher: NSObject.Type? { NSClassFromString("DmNativeLauncher") as? NSObject.Type }
+    // +[DmNativeLauncher launchGameAt:titleId:], called through its implementation: (class, selector, folder, title ID) -> error or nil
+    private typealias LaunchImp = @convention(c) (AnyClass, Selector, NSString, NSString) -> Unmanaged<NSString>?
+    private static let selector = NSSelectorFromString("launchGameAt:titleId:")
 
-    static var available: Bool { launcher != nil }
+    private static var launchImp: (AnyClass, LaunchImp)? {
+        guard let cls = NSClassFromString("DmNativeLauncher"), let method = class_getClassMethod(cls, selector) else { return nil }
+        return (cls, unsafeBitCast(method_getImplementation(method), to: LaunchImp.self))
+    }
+
+    static var available: Bool { launchImp != nil }
 
     // Presents the game full screen over the app; returns why it cannot start, or nil. The host runs once per app session and closes the app when the game exits
     static func launch(titleId: String) -> String? {
-        guard let launcher else { return "This build has no native mode host." }
+        guard let (cls, imp) = launchImp else { return "This build has no native mode host." }
         guard NativePrep.isPrepared(titleId) else { return "The game is not prepared." }
         let dir = NativePrep.directory(for: titleId).path as NSString
-        let result = launcher.perform(NSSelectorFromString("launchGameAt:titleId:"), with: dir, with: titleId.uppercased() as NSString)
-        return result?.takeUnretainedValue() as? String
+        return imp(cls, selector, dir, titleId.uppercased() as NSString)?.takeUnretainedValue() as String?
     }
 }
 
