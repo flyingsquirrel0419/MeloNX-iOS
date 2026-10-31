@@ -1,0 +1,46 @@
+diff --git a/dm/host/crash.c b/dm/host/crash.c
+--- a/dm/host/crash.c
++++ b/dm/host/crash.c
+@@ -129,8 +129,25 @@
+     if (none == me) _exit(128 + sig);
+     for (;;) pause();
+ }
++#if DM_JIT_LOADER
++// MeloNX native mode: the host shares its process with MeloNX's .NET runtime (Ryujinx.Library.dylib, NativeAOT), whose own handlers turn some faults into managed
++// exceptions (a null reference) and suspend its threads. A fault whose pc is in another image than the game's modules and the host's goes back to the handler that was
++// there before crash_install
++static struct sigaction g_prev_sa[32];
++static int chain_foreign(int sig, siginfo_t *si, void *uc_) {
++    ucontext_t *uc = uc_; Dl_info di; void *pc = (void *)uc->uc_mcontext->__ss.__pc;
++    if (sig >= 32 || module_of(pc) || !dladdr(pc, &di) || !di.dli_fname || !strstr(di.dli_fname, "Ryujinx.Library")) return 0;
++    struct sigaction *p = &g_prev_sa[sig];
++    if ((p->sa_flags & SA_SIGINFO) && p->sa_sigaction) { p->sa_sigaction(sig, si, uc_); return 1; }
++    if (p->sa_handler != SIG_DFL && p->sa_handler != SIG_IGN && p->sa_handler) { p->sa_handler(sig); return 1; }
++    return 0;
++}
++#endif
+ static void on_crash(int sig, siginfo_t *si, void *uc_) {
+     ucontext_t *uc = uc_;
++#if DM_JIT_LOADER
++    if (sig != SIGALRM && chain_foreign(sig, si, uc_)) return;
++#endif
+     if (sig == SIGTRAP && g_trap_hook && g_trap_hook(uc)) return;
+     if (sig == SIGSEGV || sig == SIGBUS) {
+         int is_write = (int)((uc->uc_mcontext->__es.__esr >> 6) & 1);   // The WnR bit of ESR
+@@ -208,8 +225,16 @@
+         pthread_t th; if (pthread_create(&th, NULL, watchdog_main, NULL)) die("watchdog thread");
+         pthread_detach(th);
+     }
++#if DM_JIT_LOADER
++    sigaction(SIGSEGV, &sa, &g_prev_sa[SIGSEGV]); sigaction(SIGBUS, &sa, &g_prev_sa[SIGBUS]); sigaction(SIGILL, &sa, &g_prev_sa[SIGILL]); sigaction(SIGTRAP, &sa, &g_prev_sa[SIGTRAP]);
++#else
+     sigaction(SIGSEGV, &sa, 0); sigaction(SIGBUS, &sa, 0); sigaction(SIGILL, &sa, 0); sigaction(SIGTRAP, &sa, 0);
++#endif
+     // abort() too (an assertion or an uncaught exception in the host or a framework): Big Brain Academy: Brain vs. Brain died once with SIGABRT 11 minutes into a run with nothing
+     // in the log and no crash report, so where it came from was lost
++#if DM_JIT_LOADER
++    sigaction(SIGABRT, &sa, &g_prev_sa[SIGABRT]);
++#else
+     sigaction(SIGABRT, &sa, 0);
++#endif
+ }

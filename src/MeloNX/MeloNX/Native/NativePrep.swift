@@ -101,6 +101,23 @@ final class NativePrep {
     }
 }
 
+// Starting a prepared game: nxnative's host, linked into the app by CI (tools/native/build_ios_host.sh). Its entry is an Objective-C class found by name
+// (src/MeloNX.NativeHost/native_boot.m), so a build without the host still links
+enum NativeLaunch {
+    private static var launcher: NSObject.Type? { NSClassFromString("DmNativeLauncher") as? NSObject.Type }
+
+    static var available: Bool { launcher != nil }
+
+    // Presents the game full screen over the app; returns why it cannot start, or nil. The host runs once per app session and closes the app when the game exits
+    static func launch(titleId: String) -> String? {
+        guard let launcher else { return "This build has no native mode host." }
+        guard NativePrep.isPrepared(titleId) else { return "The game is not prepared." }
+        let dir = NativePrep.directory(for: titleId).path as NSString
+        let result = launcher.perform(NSSelectorFromString("launchGameAt:titleId:"), with: dir, with: titleId.uppercased() as NSString)
+        return result?.takeUnretainedValue() as? String
+    }
+}
+
 @_silgen_name("native_prepare")
 fileprivate func native_prepare(_ basePath: UnsafePointer<CChar>, _ updatePath: UnsafePointer<CChar>?, _ root: UnsafePointer<CChar>,
                                 _ tablesPath: UnsafePointer<CChar>, _ profilesPath: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?

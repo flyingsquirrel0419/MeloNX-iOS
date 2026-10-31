@@ -102,6 +102,9 @@ jobs:
           set -euo pipefail
           tools/native/build_ios_native.sh "$RUNNER_TEMP/native-prep"
           tools/native/gen_app_tables.sh src/MeloNX/MeloNX/Native/Generated "$RUNNER_TEMP/native-host"
+          # nxnative's host, which runs prepared games (linked into the app executable through DM_NATIVE_HOST_LDFLAGS, see the app build)
+          tools/native/apply_patches.sh
+          tools/native/build_ios_host.sh "$RUNNER_TEMP/native-host-lib" "$RUNNER_TEMP/native-host"
           test -f src/MeloNX/MeloNX/Native/Generated/patch_tables.json
           test -f src/MeloNX/MeloNX/Native/Generated/native_profiles.json
 
@@ -137,6 +140,7 @@ jobs:
             -derivedDataPath "$DERIVED_DATA_PATH" \
             -resultBundlePath "$RESULT_BUNDLE_PATH" \
             build \
+            DM_NATIVE_HOST_LDFLAGS="$(cat "$RUNNER_TEMP/native-host-lib/ldflags.txt")" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -166,6 +170,8 @@ jobs:
           # the app's copy must carry cs_shim (native mode's rewriter): Xcode publishes Ryujinx.Library itself
           nm -gU "$app_path/Frameworks/Ryujinx.Library.dylib" > "$RUNNER_TEMP/ryujinx-exports.txt"
           grep -q '_cs_shim_disasm$' "$RUNNER_TEMP/ryujinx-exports.txt"
+          # and the native mode host in the executable (its launch class, src/MeloNX.NativeHost/native_boot.m)
+          grep -q DmNativeLauncher "$app_path/MeloNX"
           test -f "$app_path/patch_tables.json" && test -f "$app_path/native_profiles.json"
           mkdir -p "$IPA_OUTPUT_DIR/Payload"
           app="$IPA_OUTPUT_DIR/Payload/MeloNX.app"

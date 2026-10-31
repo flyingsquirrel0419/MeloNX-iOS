@@ -18,6 +18,7 @@ struct NativePrepSheet: View {
     @State private var log: [String] = []
     @State private var error: String?
     @State private var finished = false
+    @State private var launchError: String?
 
     private var profile: NativeProfile? { NativePrep.profile(for: game.titleId) }
 
@@ -46,6 +47,17 @@ struct NativePrepSheet: View {
                         Label(NativePrep.isPrepared(game.titleId) ? "Prepare Again" : "Prepare", systemImage: "hammer")
                     }
                     .disabled(running || profile == nil)
+                    if NativePrep.isPrepared(game.titleId) {
+                        Button {
+                            launchError = NativeLaunch.launch(titleId: game.titleId)
+                        } label: {
+                            Label("Launch", systemImage: "play.fill")
+                        }
+                        .disabled(running || !NativeLaunch.available)
+                        if let launchError {
+                            Text(launchError).foregroundStyle(.red)
+                        }
+                    }
                 } footer: {
                     Text("Extracts the game's code and files with your keys and rewrites the code for native mode, into Documents/NativeGames. Keep the app open until it is done.")
                 }

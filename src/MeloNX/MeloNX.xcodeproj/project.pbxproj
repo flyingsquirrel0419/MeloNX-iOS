@@ -517,6 +517,10 @@
 					"$(PROJECT_DIR)/MeloNX/Dependencies",
 				);
 				MARKETING_VERSION = 2.7;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"$(DM_NATIVE_HOST_LDFLAGS)",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.flyingsquirrel0419.MeloNX;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -571,6 +575,10 @@
 					"$(PROJECT_DIR)/MeloNX/Dependencies",
 				);
 				MARKETING_VERSION = 2.7;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"$(DM_NATIVE_HOST_LDFLAGS)",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.flyingsquirrel0419.MeloNX;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
