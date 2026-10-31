@@ -128,6 +128,13 @@ enum NativeLaunch {
     static func launch(titleId: String) -> String? {
         guard let (cls, imp) = launchImp else { return "This build has no native mode host." }
         guard NativePrep.isPrepared(titleId) else { return "The game is not prepared." }
+        // The JIT region the app got at start, which the host loads the game's code into (src/MeloNX.NativeHost/dm_jit.c): with TXM the debugger grants one only then
+        var rx = 0, rw = 0, size: UInt64 = 0
+        if native_jit_pool(&rx, &rw, &size) == 1 {
+            setenv("DM_JIT_POOL", String(format: "%lx:%lx:%llx", rx, rw, size), 1)
+        } else if ProcessInfo.processInfo.environment["HAS_TXM"] == "1" || getenv("HAS_TXM").map({ String(cString: $0) }) == "1" {
+            return "JIT is not enabled: open MeloNX with JIT (StikDebug), then launch again."
+        }
         let dir = NativePrep.directory(for: titleId).path as NSString
         return imp(cls, selector, dir, titleId.uppercased() as NSString)?.takeUnretainedValue() as String?
     }
@@ -136,6 +143,9 @@ enum NativeLaunch {
 @_silgen_name("native_prepare")
 fileprivate func native_prepare(_ basePath: UnsafePointer<CChar>, _ updatePath: UnsafePointer<CChar>?, _ root: UnsafePointer<CChar>,
                                 _ tablesPath: UnsafePointer<CChar>, _ profilesPath: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("native_jit_pool")
+fileprivate func native_jit_pool(_ rx: UnsafeMutablePointer<Int>, _ rw: UnsafeMutablePointer<Int>, _ size: UnsafeMutablePointer<UInt64>) -> Int32
 
 @_silgen_name("free_native_string")
 fileprivate func free_native_string(_ ptr: UnsafeMutablePointer<CChar>)

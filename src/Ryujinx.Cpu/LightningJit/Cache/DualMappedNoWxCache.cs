@@ -99,6 +99,9 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             _sharedCache = new(_sharedCacheAlloc, SharedCacheSize);
         }
 
+        // The shared cache's mapping (MeloNX native mode lends it to nxnative's host, which runs instead of the emulator: see DualMappedMemory.SharedJitRegion)
+        internal static DualMappedJitAllocator SharedAllocator => _sharedCacheAlloc;
+
         public static void InitMemoryCache() 
         {
             if (_sharedCacheAlloc != null)

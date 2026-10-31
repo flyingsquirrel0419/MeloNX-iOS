@@ -63,6 +63,23 @@ namespace Ryujinx.Library
             }
         }
 
+        // The JIT region the app got at start (Ryujinx.Cpu DualMappedMemory.SharedJitRegion), which the native mode host loads the game's code into. 1 = there is one
+        [UnmanagedCallersOnly(EntryPoint = "native_jit_pool")]
+        public static unsafe int JitPool(nint* rx, nint* rw, ulong* size)
+        {
+            try
+            {
+                if (!Ryujinx.Cpu.LightningJit.DualMappedMemory.SharedJitRegion(out var x, out var w, out var n)) return 0;
+                *rx = x; *rw = w; *size = n;
+                return 1;
+            }
+            catch (Exception e)
+            {
+                Log($"[RED] native mode JIT region: {e.Message}");
+                return 0;
+            }
+        }
+
         // The rewrite alone, on a game prepared before (its ExeFS kept): after an app update brings a newer rewriter or patch tables, without the game file
         [UnmanagedCallersOnly(EntryPoint = "native_rewrite")]
         public static nint Rewrite(nint gameDirPtr, nint titleIdPtr, nint tablesPathPtr, nint profilesPathPtr)

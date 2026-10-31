@@ -18,6 +18,20 @@ namespace Ryujinx.Cpu.LightningJit
     {
         private static bool initialized = false;
 
+        // The JIT region the shared cache was given when the app started (with TXM, the one the debugger grants), for MeloNX native mode: nxnative's host loads the
+        // game's rewritten code into it, as the debugger is no longer there to grant another. Only while the emulator is not running, which then never runs in this process
+        public static bool SharedJitRegion(out nint rx, out nint rw, out ulong size)
+        {
+            rx = rw = 0; size = 0;
+            if (!MemoryBlock.DualMappedEnabled() || !InitMemoryCache()) return false;
+#pragma warning disable CA1416 // iOS checking is handled in MemoryBlock.DualMappedEnabled()
+            var alloc = DualMappedNoWxCache.SharedAllocator;
+#pragma warning restore CA1416
+            if (alloc == null) return false;
+            rx = alloc.RxPtr; rw = alloc.RwPtr; size = alloc.Size;
+            return true;
+        }
+
         public static bool InitMemoryCache()
         {
             if (!MemoryBlock.DualMappedEnabled()) 
