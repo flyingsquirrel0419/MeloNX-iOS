@@ -114,14 +114,15 @@ jobs:
           # cs_shim (and Capstone behind it) must be inside the dylib, as the app ships no cs_shim library
           nm -gU src/Ryujinx.Library/bin/Release/net10.0/ios-arm64/native/Ryujinx.Library.dylib | grep -q '_cs_shim_disasm$'
           test -f src/Ryujinx.Library/bin/Release/net10.0/ios-arm64/native/Ryujinx.Library.dylib
-          for f in src/Ryujinx.Library/bin/Release/net10.0/ios-arm64/native/Ryujinx.Library.dylib src/Ryujinx.Library/bin/Release/net10.0/ios-arm64/publish/Ryujinx.Library.dylib; do
-            [ -f "$f" ] && { ls -l "$f"; shasum "$f"; nm -gU "$f" | grep -c '_cs_shim_' || true; }
-          done
 
       - name: Resolve Swift packages
         run: xcodebuild -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -resolvePackageDependencies
 
       - name: Build unsigned app
+        # Xcode's Ryujinx target publishes Ryujinx.Library again (distribution/ios/build.sh): MSBuild takes NativePrepLibDir from the environment,
+        # so that publish links cs_shim and Capstone in as well
+        env:
+          NativePrepLibDir: ${{ runner.temp }}/native-prep
         run: |
           set -euo pipefail
           # Number each build (2.7.<run>) so sideloading tools install it as an update and
@@ -162,8 +163,9 @@ jobs:
           app_path="$DERIVED_DATA_PATH/Build/Products/${XCODE_CONFIGURATION}-iphoneos/MeloNX.app"
           test -d "$app_path"
           test -f "$app_path/Frameworks/Ryujinx.Library.dylib"
-          ls -l "$app_path/Frameworks/Ryujinx.Library.dylib"; shasum "$app_path/Frameworks/Ryujinx.Library.dylib"
-          nm -gU "$app_path/Frameworks/Ryujinx.Library.dylib" | grep '_cs_shim_' || echo "app copy: no _cs_shim_ exports"
+          # the app's copy must carry cs_shim (native mode's rewriter): Xcode publishes Ryujinx.Library itself
+          nm -gU "$app_path/Frameworks/Ryujinx.Library.dylib" > "$RUNNER_TEMP/ryujinx-exports.txt"
+          grep -q '_cs_shim_disasm$' "$RUNNER_TEMP/ryujinx-exports.txt"
           test -f "$app_path/patch_tables.json" && test -f "$app_path/native_profiles.json"
           mkdir -p "$IPA_OUTPUT_DIR/Payload"
           app="$IPA_OUTPUT_DIR/Payload/MeloNX.app"
