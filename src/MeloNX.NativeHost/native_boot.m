@@ -61,6 +61,12 @@ static void apply_env_file(NSString *path) {
     }
 }
 
+// launch.txt in the game folder: each step of the launch, written and flushed before the step runs, so a crash before the host's own log (log.txt) opens still leaves where it was
+static FILE *g_steps;
+static void step(const char *what) {
+    if (g_steps) { fprintf(g_steps, "%s\n", what); fflush(g_steps); }
+}
+
 static UIViewController *top_view_controller(void) {
     UIWindow *key = nil;
     for (UIScene *s in UIApplication.sharedApplication.connectedScenes) {
@@ -84,13 +90,18 @@ static void observe_lifecycle(void) {
 // The app finds it with dlsym: used keeps the executable's dead stripping from dropping it
 __attribute__((used, visibility("default"))) const char *dm_native_launch(const char *game_dir_c, const char *title_id, const char *language) {
     static int launched;
+    char sp[1024]; snprintf(sp, sizeof sp, "%s/launch.txt", game_dir_c);
+    if (!g_steps) g_steps = fopen(sp, "w");
+    step("launch: start"); step(title_id);
     if (launched) return "native mode already ran a game in this session: close MeloNX and open it again";
     if (!dm_select_game(title_id)) return "this build has no native mode profile for the game";
+    step("profile selected"); step(DM_GAME_NAME);
     id<MTLDevice> gpu = MTLCreateSystemDefaultDevice();
     if (!gpu.supportsBCTextureCompression) return "this device's GPU cannot read BC-compressed textures (it needs an A17 Pro / M1 or later)";
     if (@available(iOS 26.0, *)) { if (![gpu supportsFamily:MTLGPUFamilyMetal4]) return "this device's GPU has no Metal 4, which native mode's graphics need"; }
     else return "native mode needs iOS 26 or later (Metal 4)";
 
+    step("GPU checked");
     NSFileManager *fm = NSFileManager.defaultManager;
     NSString *dir = @(game_dir_c);
     NSString *patched = [dir stringByAppendingPathComponent:@"patched"], *romfs = [dir stringByAppendingPathComponent:@"romfs.img"];
@@ -100,6 +111,7 @@ __attribute__((used, visibility("default"))) const char *dm_native_launch(const 
     for (NSString *d in @[@"save", @"temp", @"shaders"]) [fm createDirectoryAtPath:[dir stringByAppendingPathComponent:d] withIntermediateDirectories:YES attributes:nil error:nil];
     NSString *log = [dir stringByAppendingPathComponent:@"log.txt"], *prev = [dir stringByAppendingPathComponent:@"log.prev.txt"];
     [fm removeItemAtPath:prev error:nil]; [fm moveItemAtPath:log toPath:prev error:nil];
+    step("opening log.txt");
     if (freopen(log.fileSystemRepresentation, "w", stderr)) setvbuf(stderr, NULL, _IOLBF, 0);
     fprintf(stderr, "boot: MeloNX native mode, game %s (%s), folder %s\n", title_id, DM_GAME_NAME, game_dir_c);
 
@@ -121,13 +133,15 @@ __attribute__((used, visibility("default"))) const char *dm_native_launch(const 
     setenv("DM_FONT_DIR", [dir stringByAppendingPathComponent:@"font"].fileSystemRepresentation, 0);
     chdir(dir.fileSystemRepresentation);
     g_argv[0] = strdup("dmhost"); g_argv[1] = strdup(patched.fileSystemRepresentation); g_argc = 2;
+    step("host preload starting");
     dm_host_preload_start(g_argc, g_argv);
     g_boot_ok = 1;
+    step("presenting the game view");
 
     observe_lifecycle();
     UIViewController *root = front_ios_root();
     root.modalPresentationStyle = UIModalPresentationFullScreen;
-    [top_view_controller() presentViewController:root animated:NO completion:nil];
+    [top_view_controller() presentViewController:root animated:NO completion:^{ step("game view presented"); }];
     return NULL;
 }
 

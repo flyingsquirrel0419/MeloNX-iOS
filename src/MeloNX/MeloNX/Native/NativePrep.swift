@@ -60,8 +60,11 @@ final class NativePrep {
     }
 
     // log.txt: the host's log of the last launch (src/MeloNX.NativeHost/native_boot.m), what is left of it when the game crashed
+    // with launch.txt before it: the launch's own steps, which also cover a crash before log.txt opens
     static func launchLog(_ titleId: String) -> String? {
-        try? String(contentsOf: directory(for: titleId).appendingPathComponent("log.txt"), encoding: .utf8)
+        let dir = directory(for: titleId)
+        let parts = ["launch.txt", "log.txt"].compactMap { try? String(contentsOf: dir.appendingPathComponent($0), encoding: .utf8) }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n")
     }
 
     private static let queue = DispatchQueue(label: "melonx.native.prep", qos: .userInitiated)
