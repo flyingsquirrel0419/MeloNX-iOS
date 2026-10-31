@@ -111,6 +111,11 @@ jobs:
           dotnet publish -c Release -r ios-arm64 -p:ExtraDefineConstants=DISABLE_UPDATER -p:NativePrepLibDir="$RUNNER_TEMP/native-prep" src/Ryujinx.Library --self-contained true
           # DirectPInvoke links cs_shim at publish time: a missing Capstone symbol fails the link, not the app
           nm -gU src/Ryujinx.Library/bin/Release/net10.0/ios-arm64/native/Ryujinx.Library.dylib | grep -q '_native_prepare$'
+          grep -i 'directpinvoke' src/Ryujinx.Library/obj/Release/net10.0/ios-arm64/native/*.ilc.rsp || true
+          # a P/Invoke ILC resolves at run time leaves the entry point's name in the binary: cs_shim must be called directly, it is not shipped as a dylib
+          if strings src/Ryujinx.Library/bin/Release/net10.0/ios-arm64/native/Ryujinx.Library.dylib | grep -qx 'cs_shim_open'; then
+            echo "::error::cs_shim is resolved at run time instead of linked in (DirectPInvoke not applied)"; exit 1
+          fi
           test -f src/Ryujinx.Library/bin/Release/net10.0/ios-arm64/native/Ryujinx.Library.dylib
 
       - name: Resolve Swift packages
